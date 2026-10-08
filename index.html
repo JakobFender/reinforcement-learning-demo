@@ -1,0 +1,1451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabular RL Playground</title>
+<meta name="description" content="Interactive demos for tabular reinforcement learning: multi-armed bandits, Monte Carlo vs. TD(0) prediction, SARSA vs. Q-learning (Sutton & Barto, 2nd ed.)">
+<!-- The only external asset: Chart.js from a CDN. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+/* ------------------------------------------------------------------ */
+/* Theme tokens (light default, dark via OS preference or toggle)      */
+/* ------------------------------------------------------------------ */
+:root {
+  --bg: #f6f6f3;
+  --panel: #ffffff;
+  --panel-2: #f1f2f4;
+  --text: #1c1e22;
+  --muted: #5d636d;
+  --border: #dcdfe4;
+  --grid: #e7e9ec;
+  --accent: #2563eb;
+  --accent-soft: #dbe7ff;
+  --c1: #2563eb;   /* series 1: blue   */
+  --c2: #dd5b10;   /* series 2: orange */
+  --c3: #0d9488;   /* series 3: teal   */
+  --c4: #8a8f98;   /* reference / neutral */
+  --good: #15803d;
+  --bad: #c62828;
+  --cliff: #3b4049;
+  --heat-lo: #f4f6f9;
+  --heat-hi: #8fbcf7;
+  --hint-bg: #fff8e6;
+  --hint-border: #f0d48a;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141619; --panel: #1d2025; --panel-2: #252931; --text: #e7e9ec; --muted: #9da4ae;
+    --border: #323741; --grid: #2b3038; --accent: #6ea2ff; --accent-soft: #24365a;
+    --c1: #6ea2ff; --c2: #fb8c4a; --c3: #34d0bd; --c4: #8a919c;
+    --good: #4ade80; --bad: #f87171; --cliff: #0c0d0f;
+    --heat-lo: #20252d; --heat-hi: #2f5fae;
+    --hint-bg: #2a2516; --hint-border: #5c4c1d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141619; --panel: #1d2025; --panel-2: #252931; --text: #e7e9ec; --muted: #9da4ae;
+  --border: #323741; --grid: #2b3038; --accent: #6ea2ff; --accent-soft: #24365a;
+  --c1: #6ea2ff; --c2: #fb8c4a; --c3: #34d0bd; --c4: #8a919c;
+  --good: #4ade80; --bad: #f87171; --cliff: #0c0d0f;
+  --heat-lo: #20252d; --heat-hi: #2f5fae;
+  --hint-bg: #2a2516; --hint-border: #5c4c1d;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+}
+header {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 14px 24px 8px; max-width: 1480px; margin: 0 auto;
+}
+header h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+header .sub { color: var(--muted); font-size: 13px; }
+header .spacer { flex: 1; }
+nav.tabs {
+  display: flex; gap: 4px; padding: 0 24px; max-width: 1480px; margin: 0 auto;
+  border-bottom: 1px solid var(--border); overflow-x: auto;
+}
+nav.tabs button {
+  border: 1px solid transparent; border-bottom: none; background: none; color: var(--muted);
+  padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; border-radius: 8px 8px 0 0;
+  white-space: nowrap;
+}
+nav.tabs button[aria-selected="true"] {
+  background: var(--panel); color: var(--text); border-color: var(--border);
+  margin-bottom: -1px;
+}
+main { max-width: 1480px; margin: 0 auto; padding: 16px 24px 32px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 960px) {
+  .tab-panel.active { grid-template-columns: minmax(0, 1fr); }
+  header, nav.tabs, main { padding-left: 16px; padding-right: 16px; }
+}
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+}
+.card h2 { font-size: 15px; margin: 0 0 10px; }
+.card h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.row2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 1200px) { .row2 { grid-template-columns: minmax(0, 1fr); } }
+
+/* controls */
+.ctl { display: block; margin: 8px 0; }
+.ctl > span { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ctl output { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.ctl input[type=range] { width: 100%; accent-color: var(--accent); margin: 4px 0 0; }
+.ctl select, .ctl input[type=number] {
+  width: 100%; margin-top: 4px; padding: 5px 6px; font: inherit; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+}
+.inline { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+.inline input[type=checkbox] { accent-color: var(--accent); }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+button.btn {
+  font: inherit; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+button.btn:hover { border-color: var(--accent); }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] button.btn.primary { color: #0d1626; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.btn.primary { color: #0d1626; } }
+button.btn:disabled { opacity: .5; cursor: default; }
+.seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-top: 4px; }
+.seg label { flex: 1; text-align: center; padding: 5px 4px; font-size: 12.5px; cursor: pointer; background: var(--panel-2); }
+.seg label + label { border-left: 1px solid var(--border); }
+.seg input { display: none; }
+.seg label:has(input:checked) { background: var(--accent); color: #fff; font-weight: 600; }
+
+.agent { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px 2px; margin: 8px 0; }
+.agent.off { opacity: .55; }
+.agent-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--c); display: inline-block; }
+
+.hint { background: var(--hint-bg); border: 1px solid var(--hint-border); border-radius: 10px; padding: 10px 14px; }
+.hint h2 { font-size: 14px; margin: 0 0 4px; }
+.hint ol { margin: 4px 0 0; padding-left: 20px; }
+.hint li { margin: 3px 0; }
+.formulas { font-size: 13px; }
+.formulas div { margin: 4px 0; }
+.formulas code, code.f {
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; font-size: 12.5px;
+  background: var(--panel-2); padding: 1px 5px; border-radius: 4px;
+}
+.chart-box { position: relative; height: 260px; }
+.chart-box.tall { height: 300px; }
+.status { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; margin-top: 6px; min-height: 1.4em; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+table.data { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13px; }
+table.data th, table.data td { padding: 4px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data th { color: var(--muted); font-weight: 600; font-size: 12px; }
+table.data tr.hl td { background: var(--accent-soft); }
+.scroll { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.scroll table.data th { position: sticky; top: 0; background: var(--panel); }
+.ok { color: var(--good); font-weight: 600; }
+.notok { color: var(--bad); font-weight: 600; }
+.legend-inline { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; }
+
+/* MDP graph */
+svg.mdp { width: 100%; height: auto; display: block; }
+svg.mdp .edge { fill: none; stroke: var(--c4); stroke-width: 1.4; opacity: .7; }
+svg.mdp .edge.taken { stroke: var(--accent); stroke-width: 3; opacity: 1; }
+svg.mdp .edge.last { stroke: var(--c2); stroke-width: 3.5; opacity: 1; }
+svg.mdp .elabel { font-size: 11px; fill: var(--muted); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+svg.mdp .elabel.taken { fill: var(--text); font-weight: 600; }
+svg.mdp .node ellipse { fill: var(--panel-2); stroke: var(--border); stroke-width: 1.5; }
+svg.mdp .node.visited ellipse { stroke: var(--accent); stroke-width: 2; }
+svg.mdp .node.current ellipse { fill: var(--accent-soft); stroke: var(--c2); stroke-width: 3; }
+svg.mdp .node.term-good ellipse { stroke: var(--good); stroke-width: 2.5; }
+svg.mdp .node.term-bad ellipse { stroke: var(--bad); stroke-width: 2.5; }
+svg.mdp .node .nlabel { font-size: 13px; font-weight: 600; fill: var(--text); text-anchor: middle; }
+svg.mdp .node .nval { font-size: 10.5px; fill: var(--muted); text-anchor: middle; font-variant-numeric: tabular-nums; }
+.trace { font-size: 13px; min-height: 3.2em; }
+.trace .step { white-space: nowrap; }
+
+/* cliff grids */
+svg.grid { width: 100%; height: auto; display: block; }
+svg.grid .cell { stroke: var(--border); stroke-width: 1; }
+svg.grid .cliff { fill: var(--cliff); }
+svg.grid .arrow { font-size: 17px; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+svg.grid .qv { font-size: 8.5px; fill: var(--muted); text-anchor: middle; }
+svg.grid .lbl { font-size: 13px; font-weight: 700; text-anchor: middle; dominant-baseline: central; fill: var(--text); }
+svg.grid .cliff-lbl { font-size: 12px; fill: #c9ccd2; text-anchor: middle; dominant-baseline: central; letter-spacing: .3em; }
+svg.grid .path { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+svg.grid .dot { stroke: var(--panel); stroke-width: 2; }
+footer { max-width: 1480px; margin: 0 auto; padding: 0 24px 28px; color: var(--muted); font-size: 12.5px; }
+footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Tabular RL Playground</h1>
+    <div class="sub">Interactive companion to Sutton &amp; Barto, <i>Reinforcement Learning: An Introduction</i> (2nd ed.) — Ch. 2, 5, 6</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="theme-toggle" title="Toggle light / dark mode">Light / dark</button>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="bandit" aria-selected="true">1 · Multi-armed bandit</button>
+  <button role="tab" data-tab="castle" aria-selected="false">2 · Castle MDP: MC vs. TD(0)</button>
+  <button role="tab" data-tab="cliff" aria-selected="false">3 · Cliff walking: SARSA vs. Q-learning</button>
+</nav>
+
+<main>
+<!-- ================================================================= -->
+<!-- TAB 1: BANDIT                                                     -->
+<!-- ================================================================= -->
+<section class="tab-panel active" id="tab-bandit">
+  <div class="col">
+    <div class="card">
+      <h2>k-armed testbed</h2>
+      <label class="ctl"><span>Arms k <output for="b-k"></output></span><input type="range" id="b-k" min="2" max="20" step="1" value="10"></label>
+      <label class="ctl"><span>Steps per run <output for="b-steps"></output></span><input type="range" id="b-steps" min="100" max="2000" step="50" value="1000"></label>
+      <label class="ctl"><span>Runs to average <output for="b-runs"></output></span><input type="range" id="b-runs" min="1" max="2000" step="1" value="2000"></label>
+      <label class="ctl"><span>Random seed</span><input type="number" id="b-seed" value="1" step="1"></label>
+      <h3>Agents <span style="text-transform:none">(ε-greedy)</span></h3>
+      <div id="b-agents"></div>
+      <div class="buttons">
+        <button class="btn" id="b-preset22" title="Sutton &amp; Barto Fig. 2.2">Preset: Fig. 2.2</button>
+        <button class="btn" id="b-preset23" title="Sutton &amp; Barto Fig. 2.3">Preset: Fig. 2.3</button>
+      </div>
+      <label class="inline"><input type="checkbox" id="b-auto" checked> Re-run automatically when a value changes</label>
+      <div class="buttons">
+        <button class="btn primary" id="b-run">Run</button>
+        <button class="btn" id="b-step" title="Advance all runs by one time step">Step</button>
+        <button class="btn" id="b-reset">Reset</button>
+      </div>
+      <div class="status" id="b-status"></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="hint">
+      <h2>What to try</h2>
+      <ol>
+        <li>The defaults reproduce <b>Fig. 2.2</b>: greedy (ε = 0) gets stuck near reward 1.0 and picks the best arm only about a third of the time. ε = 0.1 learns fastest (≈ 1.4). ε = 0.01 learns slowly, but over a much longer run (e.g. 2000 steps) it closes the gap.</li>
+        <li>Click <b>Preset: Fig. 2.3</b>. Optimistic greedy (Q₀ = +5, α = 0.1) explores at the start because each arm it pulls disappoints it. Look at the spike in % optimal action around step 10.</li>
+        <li>Set <b>runs = 1</b>, press Reset, then press Step a few times. The bar chart shows that Q(a) only moves toward q*(a) for arms the agent actually pulls. Then raise k to 20 and see exploration get more expensive.</li>
+      </ol>
+    </div>
+    <div class="row2">
+      <div class="card"><h2>Average reward</h2><div class="chart-box"><canvas id="b-chart-reward"></canvas></div></div>
+      <div class="card"><h2>% optimal action</h2><div class="chart-box"><canvas id="b-chart-opt"></canvas></div></div>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h2>True q*(a) vs. estimated Q(a) — last run</h2>
+        <div class="chart-box"><canvas id="b-chart-bar"></canvas></div>
+        <div class="status" id="b-bar-status"></div>
+      </div>
+      <div class="card">
+        <h2>Summary (last 10 % of steps so far)</h2>
+        <table class="data" id="b-summary"></table>
+        <h3>Update rules</h3>
+        <div class="formulas">
+          <div>ε-greedy: <code>Aₜ = argmaxₐ Qₜ(a)</code> with prob. 1−ε, else a uniformly random arm</div>
+          <div>Reward: <code>Rₜ ~ N(q*(Aₜ), 1)</code>, testbed <code>q*(a) ~ N(0, 1)</code></div>
+          <div>Incremental mean (sample average): <code>Qₙ₊₁ = Qₙ + (1/n)·[Rₙ − Qₙ]</code></div>
+          <div>Constant step size: <code>Qₙ₊₁ = Qₙ + α·[Rₙ − Qₙ]</code></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<!-- TAB 2: CASTLE MDP                                                 -->
+<!-- ================================================================= -->
+<section class="tab-panel" id="tab-castle">
+  <div class="col">
+    <div class="card">
+      <h2>Prediction settings</h2>
+      <div class="ctl"><span>Policy at Start</span>
+        <div class="seg" id="c-policy">
+          <label><input type="radio" name="c-policy" value="1" checked>Bridge</label>
+          <label><input type="radio" name="c-policy" value="0">Forest</label>
+          <label><input type="radio" name="c-policy" value="0.5">50 / 50</label>
+        </div>
+      </div>
+      <label class="ctl"><span>Discount γ <output for="c-gamma"></output></span><input type="range" id="c-gamma" min="0" max="1" step="0.01" value="1"></label>
+      <label class="ctl"><span>TD(0) step size α <output for="c-alpha"></output></span><input type="range" id="c-alpha" min="0.01" max="1" step="0.01" value="0.2"></label>
+      <label class="ctl"><span>MC mode</span>
+        <select id="c-mcmode"><option value="avg">Sample average (1/N)</option><option value="const">Constant α</option></select></label>
+      <label class="ctl" id="c-mcalpha-wrap"><span>MC step size α <output for="c-mcalpha"></output></span><input type="range" id="c-mcalpha" min="0.01" max="1" step="0.01" value="0.2"></label>
+      <label class="ctl"><span>Initial V <output for="c-v0"></output></span><input type="range" id="c-v0" min="-10" max="10" step="0.5" value="0"></label>
+      <label class="ctl"><span>Episodes <output for="c-eps"></output></span><input type="range" id="c-eps" min="1" max="2000" step="1" value="200"></label>
+      <label class="ctl"><span>Random seed</span><input type="number" id="c-seed" value="1" step="1"></label>
+      <label class="inline"><input type="checkbox" id="c-auto" checked> Re-run automatically when a value changes</label>
+      <div class="buttons">
+        <button class="btn primary" id="c-run">Run</button>
+        <button class="btn" id="c-step" title="One transition: TD(0) update; MC update at episode end">Step</button>
+        <button class="btn" id="c-stepep" title="Finish the current episode">Step episode</button>
+        <button class="btn" id="c-reset">Reset</button>
+      </div>
+      <div class="buttons">
+        <button class="btn" id="c-lecture" title="Replay the 4 lecture episodes (sets γ=1, α=0.2, V₀=0, sample-average MC)">Lecture episodes</button>
+        <button class="btn" id="c-sample" title="Go back to sampling episodes from the MDP">Sample episodes</button>
+      </div>
+      <div class="status" id="c-status"></div>
+    </div>
+    <div class="card formulas">
+      <h2>Update rules</h2>
+      <div>Return: <code>Gₜ = Rₜ₊₁ + γ·Gₜ₊₁</code></div>
+      <div>First-visit MC (averaging): <code>V(Sₜ) ← V(Sₜ) + (1/N(Sₜ))·[Gₜ − V(Sₜ)]</code></div>
+      <div>Constant-α MC: <code>V(Sₜ) ← V(Sₜ) + α·[Gₜ − V(Sₜ)]</code></div>
+      <div>TD error: <code>δₜ = Rₜ₊₁ + γ·V(Sₜ₊₁) − V(Sₜ)</code></div>
+      <div>TD(0): <code>V(Sₜ) ← V(Sₜ) + α·δₜ</code></div>
+      <div>True v<sub>π</sub> solves Bellman: <code>v(s) = Σₐ π(a|s) Σ p(s′,r|s,a)[r + γ·v(s′)]</code></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="hint">
+      <h2>What to try</h2>
+      <ol>
+        <li>Click <b>Lecture episodes</b>, then <b>Step</b> through them. After episode 4, MC gives Start −1.5, Castle 2.33, Dragon 3.33, and TD(0) gives −1.77, −0.25, 1.68. Castle ends up negative under TD because it bootstraps from V(Dragon), which episode 3 had just pushed down.</li>
+        <li>Choose <b>Forest</b> (or 50/50) with 2000 episodes. Both methods approach v<sub>π</sub>. With α = 0.2, TD keeps jittering around v<sub>π</sub>; drop α to 0.02 and it gets smooth but slow. Also try constant-α MC.</li>
+        <li>Set a pessimistic or optimistic <b>initial V</b> (e.g. +10) and watch how long TD needs to forget it. Sample-average MC overwrites it on the first visit. Lower γ and see the +10 at the Princess lose weight.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Castle MDP <span class="muted small" style="font-weight:400">— <span class="legend-inline"><span class="swatch" style="--c:var(--accent)"></span>path of current episode</span><span class="legend-inline"><span class="swatch" style="--c:var(--c2)"></span>last transition</span></span></h2>
+      <div id="c-graph"></div>
+      <div class="trace" id="c-trace"></div>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h2>Value estimates</h2>
+        <table class="data" id="c-table"></table>
+        <div class="status" id="c-check"></div>
+      </div>
+      <div class="card">
+        <h2 style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+          <span>V(<span id="c-plot-name">Start</span>) over episodes</span>
+          <select id="c-plot-state" style="font:inherit;font-size:12.5px;padding:2px 4px;background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:6px"></select>
+        </h2>
+        <div class="chart-box"><canvas id="c-chart-v"></canvas></div>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h2>RMS error vs. true v<sub>π</sub> <span class="muted small" style="font-weight:400">(over states reachable under π)</span></h2>
+        <div class="chart-box"><canvas id="c-chart-rms"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Episode log <span class="muted small" style="font-weight:400">(V after each episode: MC / TD)</span></h2>
+        <div class="scroll" id="c-log"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================= -->
+<!-- TAB 3: CLIFF WALKING                                              -->
+<!-- ================================================================= -->
+<section class="tab-panel" id="tab-cliff">
+  <div class="col">
+    <div class="card">
+      <h2>Control settings</h2>
+      <label class="ctl"><span>Exploration ε <output for="g-eps"></output></span><input type="range" id="g-eps" min="0" max="0.5" step="0.01" value="0.1"></label>
+      <label class="inline"><input type="checkbox" id="g-decay"> ε-decay (linear to 0 over the run)</label>
+      <label class="ctl"><span>Step size α <output for="g-alpha"></output></span><input type="range" id="g-alpha" min="0.01" max="1" step="0.01" value="0.5"></label>
+      <label class="ctl"><span>Discount γ <output for="g-gamma"></output></span><input type="range" id="g-gamma" min="0" max="1" step="0.01" value="1"></label>
+      <label class="ctl"><span>Episodes <output for="g-episodes"></output></span><input type="range" id="g-episodes" min="50" max="2000" step="10" value="500"></label>
+      <label class="ctl"><span>Independent runs to average <output for="g-runs"></output></span><input type="range" id="g-runs" min="1" max="100" step="1" value="20"></label>
+      <label class="ctl"><span>Smoothing window <output for="g-smooth"></output></span><input type="range" id="g-smooth" min="1" max="100" step="1" value="10"></label>
+      <label class="inline"><input type="checkbox" id="g-clip" checked> Clip y-axis to [−100, 0] (as in S&amp;B Fig. 6.4)</label>
+      <label class="inline"><input type="checkbox" id="g-showq"> Show max<sub>a</sub> Q values in cells</label>
+      <label class="ctl"><span>Random seed</span><input type="number" id="g-seed" value="1" step="1"></label>
+      <label class="inline"><input type="checkbox" id="g-auto" checked> Re-run automatically when a value changes</label>
+      <div class="buttons">
+        <button class="btn primary" id="g-run">Run</button>
+        <button class="btn" id="g-step" title="Train one more episode (in every run)">Step</button>
+        <button class="btn" id="g-reset">Reset</button>
+        <button class="btn" id="g-watch" title="Animate one ε-greedy episode per agent (no learning)">Watch</button>
+      </div>
+      <div class="status" id="g-status"></div>
+    </div>
+    <div class="card formulas">
+      <h2>Update rules</h2>
+      <div>Rewards: −1 per step, −100 for stepping into the cliff (back to start, episode continues)</div>
+      <div>SARSA (on-policy): <code>Q(S,A) ← Q(S,A) + α·[R + γ·Q(S′,A′) − Q(S,A)]</code>, where A′ is the ε-greedy action actually taken next</div>
+      <div>Q-learning (off-policy): <code>Q(S,A) ← Q(S,A) + α·[R + γ·maxₐ Q(S′,a) − Q(S,A)]</code></div>
+      <div>Terminal: <code>Q(goal,·) = 0</code></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="hint">
+      <h2>What to try</h2>
+      <ol>
+        <li>The defaults reproduce <b>Example 6.6</b>: SARSA levels off near −25 per episode, Q-learning near −50. Q-learning's greedy path along the cliff edge is the optimal one, but ε-greedy exploration next to the cliff keeps knocking it in. SARSA learns the values of the policy it actually follows, so it takes the safer upper route.</li>
+        <li>Turn on <b>ε-decay</b>. As ε goes to 0 both methods approach −13 (the optimal return), and SARSA's path moves toward the cliff too.</li>
+        <li>Raise ε to 0.3 and watch SARSA's route move further from the cliff. Then try α = 0.1, or γ = 0.9 (with γ &lt; 1 a shorter path is worth more). Press <b>Watch</b> to see one exploratory episode per agent.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Sum of rewards per episode <span class="muted small" style="font-weight:400" id="g-chart-sub"></span></h2>
+      <div class="chart-box tall"><canvas id="g-chart"></canvas></div>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h2><span class="swatch" style="--c:var(--c1)"></span> SARSA — greedy policy &amp; max<sub>a</sub> Q(s,a)</h2>
+        <div id="g-grid-sarsa"></div>
+        <div class="status" id="g-info-sarsa"></div>
+      </div>
+      <div class="card">
+        <h2><span class="swatch" style="--c:var(--c2)"></span> Q-learning — greedy policy &amp; max<sub>a</sub> Q(s,a)</h2>
+        <div id="g-grid-q"></div>
+        <div class="status" id="g-info-q"></div>
+      </div>
+    </div>
+    <div class="muted small">Grids show run #1. Cell colour = max<sub>a</sub> Q(s,a) (lighter = more negative); arrows = greedy action; line = greedy path from S. The plot averages all runs.</div>
+  </div>
+</section>
+</main>
+
+<footer>
+  Based on R. S. Sutton &amp; A. G. Barto, <a href="http://incompleteideas.net/book/RLbook2020.pdf">Reinforcement Learning: An Introduction</a>, 2nd ed., 2018 — §2.3–2.6 (bandits), §5.1 &amp; §6.1–6.2 (MC / TD prediction), §6.4–6.5 &amp; Example 6.6 (SARSA / Q-learning).
+  All runs use a seeded PRNG (mulberry32), so the same seed and settings give the same result.
+</footer>
+
+<!-- ===================================================================== -->
+<!-- RL CORE: pure algorithms, no DOM access (also unit-tested in tests/). -->
+<!-- ===================================================================== -->
+<script id="rl-core">
+'use strict';
+
+/* ---------------------------------------------------------------------
+ * Seeded PRNG
+ * ------------------------------------------------------------------- */
+// Mix two 32-bit integers into a new 32-bit seed (murmur3-style finaliser).
+function hash32(a, b) {
+  let h = (Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b + 0x632be5ab) | 0, 0xc2b2ae35)) >>> 0;
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+// mulberry32: small, fast, good-enough PRNG with 32-bit state.
+class Rng {
+  constructor(seed) { this.s = seed >>> 0; this.spare = 0; this.hasSpare = false; }   // keep field types monomorphic (fast)
+  next() {                                   // uniform in [0, 1)
+    let t = (this.s = (this.s + 0x6D2B79F5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  int(n) { return Math.floor(this.next() * n); }   // uniform integer in {0..n-1}
+  normal() {                                 // standard normal via Box–Muller
+    if (this.hasSpare) { this.hasSpare = false; return this.spare; }
+    let u = 0; while (u === 0) u = this.next();
+    const v = this.next(), m = Math.sqrt(-2 * Math.log(u));
+    this.spare = m * Math.sin(2 * Math.PI * v); this.hasSpare = true;
+    return m * Math.cos(2 * Math.PI * v);
+  }
+}
+
+// Independent, reproducible random stream for (seed, id1, id2, ...).
+function streamRng(seed, ...ids) {
+  let h = hash32(seed | 0, 0x5eed);
+  for (const id of ids) h = hash32(h, id | 0);
+  return new Rng(h);
+}
+
+// argmax over arr[off .. off+n-1]; ties are broken uniformly at random.
+function argmaxRandom(arr, off, n, rng) {
+  let best = -Infinity, idx = 0, cnt = 0;
+  for (let i = 0; i < n; i++) {
+    const v = arr[off + i];
+    if (v > best) { best = v; idx = i; cnt = 1; }
+    else if (v === best) { cnt++; if (rng.next() * cnt < 1) idx = i; }  // reservoir sampling over ties
+  }
+  return idx;
+}
+
+/* ---------------------------------------------------------------------
+ * TAB 1 — k-armed bandit testbed (S&B §2.3)
+ * All runs are simulated in lock-step so that one "step" advances every
+ * run by one time step and the averaged curves can be drawn progressively.
+ * ------------------------------------------------------------------- */
+class BanditExperiment {
+  /** cfg = { k, steps, runs, seed, agents: [{ eps, mode: 'avg'|'const', alpha, q0 }] } */
+  constructor(cfg) {
+    this.cfg = cfg;
+    const { k, runs, steps, seed } = cfg;
+    // One testbed per run, shared by all agents (common random numbers): q*(a) ~ N(0, 1)
+    const env = streamRng(seed, 0);
+    this.qstar = new Float64Array(runs * k);
+    this.best = new Int32Array(runs);              // optimal arm argmax_a q*(a) per run
+    for (let r = 0; r < runs; r++) {
+      let b = 0;
+      for (let a = 0; a < k; a++) {
+        this.qstar[r * k + a] = env.normal();
+        if (this.qstar[r * k + a] > this.qstar[r * k + b]) b = a;
+      }
+      this.best[r] = b;
+    }
+    this.agents = cfg.agents.map((ag, i) => ({
+      ...ag,
+      Q: new Float64Array(runs * k).fill(ag.q0),   // action-value estimates Q(a), start at Q0
+      N: new Uint32Array(runs * k),                // action counts N(a)
+      rng: streamRng(seed, 1, i),                  // agent-specific stream (actions + rewards)
+      avgReward: new Float64Array(steps),          // mean reward over runs, per step
+      optFrac: new Float64Array(steps),            // fraction of runs choosing optimal arm
+      lastAction: -1,                              // action of the last run (for the bar chart)
+    }));
+    this.t = 0;
+  }
+  get done() { return this.t >= this.cfg.steps; }
+
+  step() {
+    if (this.done) return false;
+    const { k, runs } = this.cfg, t = this.t, qstar = this.qstar, best = this.best;
+    for (const ag of this.agents) {
+      const rng = ag.rng, Q = ag.Q, N = ag.N, eps = ag.eps, avg = ag.mode === 'avg', alpha = ag.alpha;
+      let rewardSum = 0, optCount = 0;
+      for (let r = 0; r < runs; r++) {
+        const off = r * k;
+        // ε-greedy: explore with probability ε, otherwise exploit argmax_a Q(a)
+        const a = rng.next() < eps ? rng.int(k) : argmaxRandom(Q, off, k, rng);
+        // Reward R ~ N(q*(a), 1)
+        const R = qstar[off + a] + rng.normal();
+        const i = off + a;
+        N[i]++;
+        // Incremental update  Q_{n+1} = Q_n + StepSize · [R_n − Q_n]
+        //   sample average: StepSize = 1/n   (exact running mean of rewards)
+        //   constant:       StepSize = α     (exponential recency-weighted average)
+        const stepSize = avg ? 1 / N[i] : alpha;
+        Q[i] += stepSize * (R - Q[i]);
+        rewardSum += R;
+        if (a === best[r]) optCount++;
+        if (r === runs - 1) ag.lastAction = a;
+      }
+      ag.avgReward[t] = rewardSum / runs;
+      ag.optFrac[t] = optCount / runs;
+    }
+    this.t++;
+    return !this.done;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * TAB 2 — Castle MDP, Monte Carlo vs. TD(0) prediction (S&B §5.1, §6.1)
+ * ------------------------------------------------------------------- */
+const CASTLE_STATES = ['Start', 'Castle', 'Dragon', 'Forest', 'Attacked', 'CastleBack', 'SecretDoor', 'Princess', 'Dead'];
+const CASTLE_TERMINAL = new Set(['Princess', 'Dead']);
+const CASTLE_NONTERMINAL = CASTLE_STATES.filter(s => !CASTLE_TERMINAL.has(s));
+// Dynamics p(s', r | s, a): state -> action -> list of outcomes
+const CASTLE_MDP = {
+  Start: {
+    CrossBridge: [{ to: 'Castle', p: 0.9, r: -1 }, { to: 'Dead', p: 0.1, r: -10 }],
+    EnterForest: [{ to: 'Forest', p: 1.0, r: -1 }],
+  },
+  Castle:     { Enter:    [{ to: 'Dragon', p: 1.0, r: -1 }] },
+  Dragon:     { Fight:    [{ to: 'Princess', p: 0.6, r: 10 }, { to: 'Dead', p: 0.4, r: -10 }] },
+  Forest:     { Traverse: [{ to: 'CastleBack', p: 0.5, r: -1 }, { to: 'Attacked', p: 0.5, r: -1 }] },
+  Attacked:   { Fight:    [{ to: 'CastleBack', p: 0.8, r: 3 }, { to: 'Dead', p: 0.2, r: -10 }] },
+  CastleBack: { Search:   [{ to: 'SecretDoor', p: 0.4, r: -1 }, { to: 'CastleBack', p: 0.6, r: -1 }] },
+  SecretDoor: { Enter:    [{ to: 'Princess', p: 1.0, r: 10 }] },
+};
+
+// π(a|s): only Start has a choice; pBridge = π(CrossBridge | Start).
+function castlePolicy(s, pBridge) {
+  if (s === 'Start') return [['CrossBridge', pBridge], ['EnterForest', 1 - pBridge]].filter(x => x[1] > 0);
+  return [[Object.keys(CASTLE_MDP[s])[0], 1]];
+}
+
+function pick(list, prob, rng) {          // sample one element of list with probabilities prob(x)
+  let u = rng.next();
+  for (const x of list) { const p = prob(x); if (u < p) return x; u -= p; }
+  return list[list.length - 1];
+}
+
+// Sample one episode under π: list of transitions { s, a, r, s2 }.
+function sampleCastleEpisode(rng, pBridge, maxLen = 1000) {
+  const ep = [];
+  let s = 'Start';
+  while (!CASTLE_TERMINAL.has(s) && ep.length < maxLen) {
+    const a = pick(castlePolicy(s, pBridge), x => x[1], rng)[0];
+    const o = pick(CASTLE_MDP[s][a], x => x.p, rng);
+    ep.push({ s, a, r: o.r, s2: o.to });
+    s = o.to;
+  }
+  return ep;
+}
+
+// The four fixed episodes used on the lecture slides.
+const LECTURE_EPISODES = [
+  [{ s: 'Start', a: 'CrossBridge', r: -1, s2: 'Castle' }, { s: 'Castle', a: 'Enter', r: -1, s2: 'Dragon' }, { s: 'Dragon', a: 'Fight', r: 10, s2: 'Princess' }],
+  [{ s: 'Start', a: 'CrossBridge', r: -10, s2: 'Dead' }],
+  [{ s: 'Start', a: 'CrossBridge', r: -1, s2: 'Castle' }, { s: 'Castle', a: 'Enter', r: -1, s2: 'Dragon' }, { s: 'Dragon', a: 'Fight', r: -10, s2: 'Dead' }],
+  [{ s: 'Start', a: 'CrossBridge', r: -1, s2: 'Castle' }, { s: 'Castle', a: 'Enter', r: -1, s2: 'Dragon' }, { s: 'Dragon', a: 'Fight', r: 10, s2: 'Princess' }],
+];
+
+// True v_π: solve the Bellman equations  (I − γ P_π) v = r_π  by Gaussian elimination.
+function castleTrueValues(pBridge, gamma) {
+  const S = CASTLE_NONTERMINAL, n = S.length;
+  const idx = Object.fromEntries(S.map((s, i) => [s, i]));
+  const A = S.map((_, i) => { const row = new Array(n + 1).fill(0); row[i] = 1; return row; });
+  S.forEach((s, i) => {
+    for (const [a, pa] of castlePolicy(s, pBridge)) {
+      for (const o of CASTLE_MDP[s][a]) {
+        A[i][n] += pa * o.p * o.r;                                   // expected immediate reward r_π(s)
+        if (!CASTLE_TERMINAL.has(o.to)) A[i][idx[o.to]] -= gamma * pa * o.p;   // − γ P_π(s, s')
+      }
+    }
+  });
+  for (let c = 0; c < n; c++) {             // forward elimination with partial pivoting
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = A[r][c] / A[c][c];
+      for (let k = c; k <= n; k++) A[r][k] -= f * A[c][k];
+    }
+  }
+  const v = {};
+  S.forEach((s, i) => { v[s] = A[i][n] / A[i][i]; });
+  return v;
+}
+
+// States with non-zero probability of being visited under π (for the RMS error).
+function castleReachable(pBridge) {
+  const seen = new Set(['Start']), stack = ['Start'];
+  while (stack.length) {
+    const s = stack.pop();
+    for (const [a] of castlePolicy(s, pBridge)) for (const o of CASTLE_MDP[s][a]) {
+      if (!CASTLE_TERMINAL.has(o.to) && !seen.has(o.to)) { seen.add(o.to); stack.push(o.to); }
+    }
+  }
+  return CASTLE_NONTERMINAL.filter(s => seen.has(s));
+}
+
+class CastlePredictor {
+  /** cfg = { gamma, alphaTD, mcMode: 'avg'|'const', alphaMC, v0 } */
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.Vmc = {}; this.Vtd = {}; this.N = {};
+    for (const s of CASTLE_NONTERMINAL) { this.Vmc[s] = cfg.v0; this.Vtd[s] = cfg.v0; this.N[s] = 0; }
+  }
+  static val(V, s) { return CASTLE_TERMINAL.has(s) ? 0 : V[s]; }   // V(terminal) = 0
+
+  // TD(0), applied online after every transition (S_t, R_{t+1}, S_{t+1})
+  tdStep({ s, r, s2 }) {
+    const { gamma, alphaTD } = this.cfg;
+    const old = this.Vtd[s];
+    const target = r + gamma * CastlePredictor.val(this.Vtd, s2);   // TD target  R + γ V(S')
+    const delta = target - old;                                      // TD error   δ = R + γ V(S') − V(S)
+    this.Vtd[s] = old + alphaTD * delta;                             // V(S) ← V(S) + α δ
+    return { s, old, target, delta, next: this.Vtd[s] };
+  }
+
+  // First-visit Monte Carlo, applied once the episode has terminated
+  mcEpisode(ep) {
+    const { gamma, mcMode, alphaMC } = this.cfg;
+    const T = ep.length, G = new Array(T);
+    let g = 0;
+    for (let t = T - 1; t >= 0; t--) { g = ep[t].r + gamma * g; G[t] = g; }   // G_t = R_{t+1} + γ G_{t+1}
+    const seen = new Set(), updates = [];
+    for (let t = 0; t < T; t++) {
+      const s = ep[t].s;
+      if (seen.has(s)) continue;              // first visit only
+      seen.add(s);
+      this.N[s]++;
+      const old = this.Vmc[s];
+      // averaging:  V ← V + (1/N)[G − V]  (incremental mean of observed returns)
+      // constant-α: V ← V + α[G − V]
+      const step = mcMode === 'avg' ? 1 / this.N[s] : alphaMC;
+      this.Vmc[s] = old + step * (G[t] - old);
+      updates.push({ s, G: G[t], old, next: this.Vmc[s] });
+    }
+    return updates;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * TAB 3 — Cliff walking, SARSA vs. Q-learning (S&B Example 6.6)
+ * ------------------------------------------------------------------- */
+const CLIFF_ROWS = 4, CLIFF_COLS = 12;
+const CLIFF_START = 3 * CLIFF_COLS + 0, CLIFF_GOAL = 3 * CLIFF_COLS + 11;
+const CLIFF_MOVES = [[-1, 0], [0, 1], [1, 0], [0, -1]];      // up, right, down, left
+const CLIFF_ARROWS = ['↑', '→', '↓', '←'];
+function isCliff(s) { const r = Math.floor(s / CLIFF_COLS), c = s % CLIFF_COLS; return r === 3 && c >= 1 && c <= 10; }
+function cliffMove(s, a) {                    // raw grid move, clamped at the borders
+  const r = Math.min(CLIFF_ROWS - 1, Math.max(0, Math.floor(s / CLIFF_COLS) + CLIFF_MOVES[a][0]));
+  const c = Math.min(CLIFF_COLS - 1, Math.max(0, s % CLIFF_COLS + CLIFF_MOVES[a][1]));
+  return r * CLIFF_COLS + c;
+}
+function cliffStep(s, a) {
+  const s2 = cliffMove(s, a);
+  if (isCliff(s2)) return { s2: CLIFF_START, r: -100, done: false, fell: s2 };   // fall: −100, back to start
+  return { s2, r: -1, done: s2 === CLIFF_GOAL };
+}
+function epsGreedy(Q, s, eps, rng) { return rng.next() < eps ? rng.int(4) : argmaxRandom(Q, s * 4, 4, rng); }
+function maxQ(Q, s) { return Math.max(Q[s * 4], Q[s * 4 + 1], Q[s * 4 + 2], Q[s * 4 + 3]); }
+
+// One SARSA episode; returns the sum of rewards.
+function sarsaEpisode(Q, eps, alpha, gamma, rng, maxSteps = 10000) {
+  let s = CLIFF_START, a = epsGreedy(Q, s, eps, rng), total = 0;
+  for (let t = 0; t < maxSteps; t++) {
+    const { s2, r, done } = cliffStep(s, a);
+    total += r;
+    if (done) { Q[s * 4 + a] += alpha * (r - Q[s * 4 + a]); break; }     // Q(terminal, ·) = 0
+    const a2 = epsGreedy(Q, s2, eps, rng);                              // A' chosen by the behaviour policy
+    // SARSA target: R + γ Q(S', A')
+    Q[s * 4 + a] += alpha * (r + gamma * Q[s2 * 4 + a2] - Q[s * 4 + a]);
+    s = s2; a = a2;
+  }
+  return total;
+}
+
+// One Q-learning episode; returns the sum of rewards.
+function qlearningEpisode(Q, eps, alpha, gamma, rng, maxSteps = 10000) {
+  let s = CLIFF_START, total = 0;
+  for (let t = 0; t < maxSteps; t++) {
+    const a = epsGreedy(Q, s, eps, rng);                                 // behave ε-greedily
+    const { s2, r, done } = cliffStep(s, a);
+    total += r;
+    // Q-learning target: R + γ max_a Q(S', a)   (greedy target policy)
+    const target = done ? r : r + gamma * maxQ(Q, s2);
+    Q[s * 4 + a] += alpha * (target - Q[s * 4 + a]);
+    s = s2;
+    if (done) break;
+  }
+  return total;
+}
+
+class CliffExperiment {
+  /** cfg = { runs, episodes, eps, decay, alpha, gamma, seed } */
+  constructor(cfg) {
+    this.cfg = cfg;
+    const mk = (name, fn, id) => ({
+      name, fn,
+      Qs: Array.from({ length: cfg.runs }, () => new Float64Array(CLIFF_ROWS * CLIFF_COLS * 4)),
+      rngs: Array.from({ length: cfg.runs }, (_, r) => streamRng(cfg.seed, id, r)),
+      returns: new Float64Array(cfg.episodes),      // sum of rewards per episode, averaged over runs
+    });
+    this.agents = [mk('SARSA', sarsaEpisode, 1), mk('Q-learning', qlearningEpisode, 2)];
+    this.ep = 0;
+  }
+  get done() { return this.ep >= this.cfg.episodes; }
+  epsAt(n) {                                      // ε schedule: constant or linear decay to 0
+    const { eps, decay, episodes } = this.cfg;
+    return decay ? eps * Math.max(0, 1 - n / Math.max(1, episodes - 1)) : eps;
+  }
+  step() {
+    if (this.done) return false;
+    const { runs, alpha, gamma } = this.cfg, eps = this.epsAt(this.ep);
+    for (const ag of this.agents) {
+      let sum = 0;
+      for (let r = 0; r < runs; r++) sum += ag.fn(ag.Qs[r], eps, alpha, gamma, ag.rngs[r]);
+      ag.returns[this.ep] = sum / runs;
+    }
+    this.ep++;
+    return !this.done;
+  }
+}
+
+// Greedy path from start (deterministic argmax, first index on ties).
+function cliffGreedyPath(Q, maxLen = 60) {
+  const path = [CLIFF_START], seen = new Set(path);
+  let s = CLIFF_START, outcome = 'loop';
+  for (let i = 0; i < maxLen; i++) {
+    let a = 0;
+    for (let b = 1; b < 4; b++) if (Q[s * 4 + b] > Q[s * 4 + a]) a = b;
+    const s2 = cliffMove(s, a);
+    path.push(s2);
+    if (isCliff(s2)) { outcome = 'cliff'; break; }
+    if (s2 === CLIFF_GOAL) { outcome = 'goal'; break; }
+    if (seen.has(s2)) { outcome = 'loop'; break; }
+    seen.add(s2); s = s2;
+  }
+  return { path, outcome };
+}
+
+function movingAverage(arr, n, w) {             // trailing moving average over the first n values
+  const out = new Array(n);
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += arr[i];
+    if (i >= w) sum -= arr[i - w];
+    out[i] = sum / Math.min(i + 1, w);
+  }
+  return out;
+}
+</script>
+
+<!-- ===================================================================== -->
+<!-- UI                                                                    -->
+<!-- ===================================================================== -->
+<script>
+'use strict';
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const num = id => parseFloat($('#' + id).value);
+const fmt = (x, d = 2) => (x < 0 ? '−' : '') + Math.abs(x).toFixed(d);
+const fmtSigned = (x, d = 2) => (x > 0 ? '+' : '') + fmt(x, d);
+
+function hexToRgb(h) {
+  h = h.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgba(hex, a) { const [r, g, b] = hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; }
+function mixHex(h1, h2, t) {
+  const a = hexToRgb(h1), b = hexToRgb(h2);
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
+}
+function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
+
+/* ---------------- slider outputs ---------------- */
+function syncOutput(input) {
+  const out = document.querySelector(`output[for="${input.id}"]`);
+  if (!out) return;
+  const step = parseFloat(input.step || '1');
+  const decimals = step >= 1 ? 0 : (String(input.step).split('.')[1] || '').length;
+  out.textContent = fmt(parseFloat(input.value), decimals);
+}
+function setVal(id, v) { const el = $('#' + id); el.value = v; syncOutput(el); }
+
+/* ---------------- animation runner (time-sliced, cancellable) ---------------- */
+function makeRunner(onStateChange) {
+  let token = 0, running = false;
+  return {
+    get running() { return running; },
+    start(stepFn, frameFn, budgetMs = 18) {
+      const my = ++token; running = true; onStateChange(true);
+      const loop = () => {
+        if (my !== token) return;
+        const t0 = performance.now();
+        let more = true;
+        while (more && performance.now() - t0 < budgetMs) more = stepFn();
+        frameFn();
+        if (more) requestAnimationFrame(loop);
+        else { running = false; onStateChange(false); }
+      };
+      requestAnimationFrame(loop);
+    },
+    cancel() { token++; if (running) { running = false; onStateChange(false); } },
+  };
+}
+
+/* ---------------- charts ---------------- */
+const charts = [];
+function baseOptions(xTitle, yTitle, extra = {}) {
+  return {
+    animation: false, responsive: true, maintainAspectRatio: false, normalized: true,
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    plugins: { legend: { labels: { boxWidth: 14, boxHeight: 2 } }, tooltip: { callbacks: {} } },
+    elements: { point: { radius: 0 }, line: { borderWidth: 1.6, tension: 0 } },
+    scales: {
+      x: { type: 'linear', title: { display: true, text: xTitle }, ticks: { maxTicksLimit: 8 } },
+      y: { title: { display: true, text: yTitle } },
+    },
+    ...extra,
+  };
+}
+function makeChart(canvasId, type, datasets, options) {
+  const chart = new Chart($('#' + canvasId), { type, data: { labels: [], datasets }, options });
+  charts.push(chart);
+  applyChartTheme(chart);
+  return chart;
+}
+// Each dataset carries _cv (CSS variable for its colour) so it can follow the theme.
+function applyChartTheme(chart) {
+  const grid = css('--grid'), muted = css('--muted'), text = css('--text');
+  for (const ax of Object.values(chart.options.scales || {})) {
+    ax.grid = { ...(ax.grid || {}), color: grid };
+    ax.border = { color: grid };
+    ax.ticks = { ...(ax.ticks || {}), color: muted };
+    if (ax.title) ax.title.color = muted;
+  }
+  chart.options.plugins.legend.labels.color = text;
+  for (const ds of chart.data.datasets) {
+    const c = css(ds._cv);
+    ds.borderColor = c;
+    ds.backgroundColor = ds._fill ? rgba(c, ds._fill) : c;
+  }
+  chart.update('none');
+}
+function lineDs(label, cv, extra = {}) { return { label, _cv: cv, data: [], ...extra }; }
+
+/* ---------------- tabs & theme ---------------- */
+let onTabShown = {};
+$$('nav.tabs button').forEach(btn => btn.addEventListener('click', () => {
+  $$('nav.tabs button').forEach(b => b.setAttribute('aria-selected', String(b === btn)));
+  $$('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + btn.dataset.tab));
+  try { localStorage.setItem('rl-tab', btn.dataset.tab); } catch (e) {}
+  if (onTabShown[btn.dataset.tab]) onTabShown[btn.dataset.tab]();
+}));
+
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  if (t) return t;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function themeChanged() { charts.forEach(applyChartTheme); cliffUI && cliffUI.renderGrids(); }
+$('#theme-toggle').addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('rl-theme', next); } catch (e) {}
+  themeChanged();
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => themeChanged());
+try { const t = localStorage.getItem('rl-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+Chart.defaults.font.size = 12;
+
+/* Wire a control panel: any input change → debounced auto re-run if enabled. */
+function wireAuto(root, autoId, onChange) {
+  const fire = debounce(() => { if ($('#' + autoId).checked) onChange(); }, 200);
+  root.addEventListener('input', e => {
+    if (e.target.type === 'range') syncOutput(e.target);
+    if (e.target.id === autoId) return;
+    fire();
+  });
+  root.addEventListener('change', e => { if (e.target.tagName === 'SELECT' || e.target.type === 'radio' || e.target.type === 'checkbox') { if (e.target.id !== autoId) fire(); } });
+}
+
+/* ===================================================================== */
+/* TAB 1 — BANDIT UI                                                     */
+/* ===================================================================== */
+const banditUI = (() => {
+  const COLORS = ['--c1', '--c2', '--c3'];
+  const NAMES = ['A', 'B', 'C'];
+  const DEFAULT_EPS = [0, 0.01, 0.1];
+
+  // Build the three agent control blocks.
+  $('#b-agents').innerHTML = NAMES.map((n, i) => `
+    <div class="agent" id="b-agent${i}">
+      <label class="agent-head"><input type="checkbox" id="b-on${i}" checked>
+        <span class="swatch" style="--c:var(${COLORS[i]})"></span> Agent ${n}</label>
+      <label class="ctl"><span>ε <output for="b-eps${i}"></output></span><input type="range" id="b-eps${i}" min="0" max="1" step="0.01" value="${DEFAULT_EPS[i]}"></label>
+      <label class="ctl"><span>Step size</span><select id="b-mode${i}"><option value="avg">Sample average 1/n</option><option value="const">Constant α</option></select></label>
+      <label class="ctl" id="b-alpha-wrap${i}"><span>α <output for="b-alpha${i}"></output></span><input type="range" id="b-alpha${i}" min="0.01" max="1" step="0.01" value="0.1"></label>
+      <label class="ctl"><span>Initial Q₀ <output for="b-q0${i}"></output></span><input type="range" id="b-q0${i}" min="-5" max="10" step="0.5" value="0"></label>
+    </div>`).join('');
+
+  const panel = $('#tab-bandit .card');
+  $$('input[type=range]', panel).forEach(syncOutput);
+
+  function agentLabel(ag) {
+    let s = `${ag.name}: ε=${ag.eps}`;
+    if (ag.q0 !== 0) s += `, Q₀=${ag.q0}`;
+    if (ag.mode === 'const') s += `, α=${ag.alpha}`;
+    return s;
+  }
+  function readConfig() {
+    const agents = [];
+    NAMES.forEach((n, i) => {
+      const on = $('#b-on' + i).checked;
+      $('#b-agent' + i).classList.toggle('off', !on);
+      $('#b-alpha-wrap' + i).style.display = $('#b-mode' + i).value === 'const' ? '' : 'none';
+      if (on) agents.push({ name: n, color: COLORS[i], eps: num('b-eps' + i), mode: $('#b-mode' + i).value, alpha: num('b-alpha' + i), q0: num('b-q0' + i) });
+    });
+    return { k: num('b-k'), steps: num('b-steps'), runs: num('b-runs'), seed: Math.trunc(num('b-seed')) || 0, agents };
+  }
+
+  const rewardChart = makeChart('b-chart-reward', 'line', [], baseOptions('Steps', 'Average reward'));
+  const optChart = makeChart('b-chart-opt', 'line', [], baseOptions('Steps', '% optimal action', {}));
+  optChart.options.scales.y.min = 0; optChart.options.scales.y.max = 100;
+  const barChart = makeChart('b-chart-bar', 'bar', [], {
+    animation: false, responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { labels: { boxWidth: 12 } } },
+    scales: { x: { title: { display: true, text: 'Action a (★ = optimal)' } }, y: { title: { display: true, text: 'Value' } } },
+  });
+
+  let exp = null;
+  const runner = makeRunner(running => { $('#b-run').textContent = running ? 'Pause' : 'Run'; });
+
+  function reset() {
+    runner.cancel();
+    const cfg = readConfig();
+    exp = new BanditExperiment(cfg);
+    // (re)build datasets: one per agent
+    rewardChart.data.datasets = exp.agents.map(ag => lineDs(agentLabel(ag), ag.color));
+    optChart.data.datasets = exp.agents.map(ag => lineDs(agentLabel(ag), ag.color));
+    barChart.data.datasets = [
+      { label: 'true q*(a)', _cv: '--c4', _fill: 0.85, data: [] },
+      ...exp.agents.map(ag => ({ label: `Q(a) ${ag.name}`, _cv: ag.color, _fill: 0.85, data: [] })),
+    ];
+    rewardChart.options.scales.x.max = optChart.options.scales.x.max = cfg.steps;
+    rewardChart.options.scales.x.min = optChart.options.scales.x.min = 1;
+    [rewardChart, optChart, barChart].forEach(applyChartTheme);
+    render();
+  }
+
+  function render() {
+    const t = exp.t, { k, runs, steps } = exp.cfg;
+    exp.agents.forEach((ag, i) => {
+      const rw = new Array(t), op = new Array(t);
+      for (let j = 0; j < t; j++) { rw[j] = { x: j + 1, y: ag.avgReward[j] }; op[j] = { x: j + 1, y: 100 * ag.optFrac[j] }; }
+      rewardChart.data.datasets[i].data = rw;
+      optChart.data.datasets[i].data = op;
+    });
+    rewardChart.update('none'); optChart.update('none');
+
+    // Bar chart: last run (index runs-1)
+    const off = (runs - 1) * k, best = exp.best[runs - 1];
+    barChart.data.labels = Array.from({ length: k }, (_, a) => (a === best ? '★' : '') + (a + 1));
+    barChart.data.datasets[0].data = Array.from(exp.qstar.subarray(off, off + k));
+    exp.agents.forEach((ag, i) => { barChart.data.datasets[i + 1].data = Array.from(ag.Q.subarray(off, off + k)); });
+    barChart.update('none');
+    $('#b-bar-status').textContent = t === 0 ? 'Bars show Q₀ before any step.' :
+      'Last action in this run: ' + exp.agents.map(ag => `${ag.name} → arm ${ag.lastAction + 1}${ag.lastAction === best ? ' ★' : ''}`).join(' · ');
+
+    // Summary table: averages over the last 10 % of steps done so far
+    const from = Math.max(0, t - Math.max(1, Math.round(0.1 * t)));
+    let html = '<tr><th>Agent</th><th>ε</th><th>Step size</th><th>Q₀</th><th>avg reward</th><th>% optimal</th></tr>';
+    for (const ag of exp.agents) {
+      let r = 0, o = 0;
+      for (let j = from; j < t; j++) { r += ag.avgReward[j]; o += ag.optFrac[j]; }
+      const n = Math.max(1, t - from);
+      html += `<tr><td><span class="swatch" style="--c:var(${ag.color})"></span> ${ag.name}</td><td>${ag.eps}</td>
+        <td>${ag.mode === 'avg' ? '1/n' : 'α=' + ag.alpha}</td><td>${ag.q0}</td>
+        <td>${t ? fmt(r / n) : '–'}</td><td>${t ? (100 * o / n).toFixed(1) + ' %' : '–'}</td></tr>`;
+    }
+    $('#b-summary').innerHTML = html;
+    $('#b-status').textContent = `Step ${t} / ${steps} · ${runs} run${runs > 1 ? 's' : ''} · ${exp.agents.length} agent${exp.agents.length === 1 ? '' : 's'}`;
+  }
+
+  function run() {
+    if (runner.running) { runner.cancel(); return; }
+    if (exp.done) reset();
+    runner.start(() => exp.step(), render);
+  }
+  function step() { runner.cancel(); if (exp.done) return; exp.step(); render(); }
+
+  $('#b-run').addEventListener('click', run);
+  $('#b-step').addEventListener('click', step);
+  $('#b-reset').addEventListener('click', reset);
+  const autoRun = () => { reset(); run(); };
+  wireAuto(panel, 'b-auto', autoRun);
+
+  function preset(list) {
+    list.forEach((p, i) => {
+      $('#b-on' + i).checked = p.on;
+      if (!p.on) return;
+      setVal('b-eps' + i, p.eps); $('#b-mode' + i).value = p.mode; setVal('b-alpha' + i, p.alpha); setVal('b-q0' + i, p.q0);
+    });
+    autoRun();
+  }
+  $('#b-preset22').addEventListener('click', () => {
+    setVal('b-k', 10); setVal('b-steps', 1000); setVal('b-runs', 2000);
+    preset([{ on: true, eps: 0, mode: 'avg', alpha: 0.1, q0: 0 }, { on: true, eps: 0.01, mode: 'avg', alpha: 0.1, q0: 0 }, { on: true, eps: 0.1, mode: 'avg', alpha: 0.1, q0: 0 }]);
+  });
+  $('#b-preset23').addEventListener('click', () => {
+    setVal('b-k', 10); setVal('b-steps', 1000); setVal('b-runs', 2000);
+    preset([{ on: true, eps: 0, mode: 'const', alpha: 0.1, q0: 5 }, { on: true, eps: 0.1, mode: 'const', alpha: 0.1, q0: 0 }, { on: false }]);
+  });
+
+  reset();
+  return { autoRun };
+})();
+
+/* ===================================================================== */
+/* TAB 2 — CASTLE MDP UI                                                 */
+/* ===================================================================== */
+const castleUI = (() => {
+  const panel = $('#tab-castle .card');
+  $$('input[type=range]', panel).forEach(syncOutput);
+
+  /* ---- MDP graph (SVG) ---- */
+  const POS = {
+    Start: [80, 190], Castle: [245, 65], Dragon: [440, 65], Princess: [760, 120], Dead: [600, 215],
+    Forest: [200, 320], Attacked: [380, 245], CastleBack: [470, 345], SecretDoor: [690, 345],
+  };
+  const RX = 60, RY = 27, W = 830, H = 420;
+  const CURVE = { 'Start>Dead': -45, 'Dragon>Dead': 10, 'Forest>CastleBack': 25, 'Attacked>Dead': -10, 'Dragon>Princess': -15 };
+  const SHORT = { CrossBridge: 'Bridge', EnterForest: 'Forest' };
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, parent) => { const e = document.createElementNS(svgNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+  function boundary([cx, cy], [tx, ty], pad = 0) {          // point on the ellipse towards (tx,ty)
+    const dx = tx - cx, dy = ty - cy;
+    const t = 1 / Math.sqrt((dx / (RX + pad)) ** 2 + (dy / (RY + pad)) ** 2);
+    return [cx + dx * t, cy + dy * t];
+  }
+  const svg = el('svg', { class: 'mdp', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Castle MDP graph' });
+  const defs = el('defs', {}, svg);
+  for (const [id, v] of [['arr', '--c4'], ['arr-taken', '--accent'], ['arr-last', '--c2']]) {
+    const m = el('marker', { id, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, defs);
+    el('path', { d: 'M0,0 L10,5 L0,10 z', style: `fill: var(${v})` }, m);
+  }
+  const edgeLayer = el('g', {}, svg), labelLayer = el('g', {}, svg), nodeLayer = el('g', {}, svg);
+  const edges = {};   // key "s>a>s2" -> {path, label}
+  for (const s of CASTLE_NONTERMINAL) {
+    for (const a in CASTLE_MDP[s]) {
+      for (const o of CASTLE_MDP[s][a]) {
+        const key = `${s}>${a}>${o.to}`, lab = `${s === 'Start' ? SHORT[a] : a} ${o.p}, ${o.r > 0 ? '+' : ''}${o.r}`.replace('-', '−');
+        let d, lx, ly;
+        if (o.to === s) {                                   // self loop (CastleBack)
+          const [cx, cy] = POS[s];
+          d = `M${cx - 22},${cy + RY - 2} C${cx - 45},${cy + 75} ${cx + 45},${cy + 75} ${cx + 22},${cy + RY - 2}`;
+          lx = cx; ly = cy + 70;
+        } else {
+          const p0 = POS[s], p1 = POS[o.to];
+          const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2;
+          const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+          const k = CURVE[`${s}>${o.to}`] || 0;
+          const c = [mx - (p1[1] - p0[1]) / len * k, my + (p1[0] - p0[0]) / len * k];   // control point
+          const a0 = boundary(p0, c), a1 = boundary(p1, c, 3);
+          d = `M${a0[0]},${a0[1]} Q${c[0]},${c[1]} ${a1[0]},${a1[1]}`;
+          lx = 0.25 * a0[0] + 0.5 * c[0] + 0.25 * a1[0];
+          ly = 0.25 * a0[1] + 0.5 * c[1] + 0.25 * a1[1] - 4;
+        }
+        const path = el('path', { class: 'edge', d, 'marker-end': 'url(#arr)' }, edgeLayer);
+        const label = el('text', { class: 'elabel', x: lx, y: ly, 'text-anchor': 'middle' }, labelLayer);
+        label.textContent = lab;
+        edges[key] = { path, label };
+      }
+    }
+  }
+  const nodes = {};
+  for (const s of CASTLE_STATES) {
+    const [x, y] = POS[s];
+    const g = el('g', { class: 'node' + (s === 'Princess' ? ' term-good' : s === 'Dead' ? ' term-bad' : '') }, nodeLayer);
+    el('ellipse', { cx: x, cy: y, rx: RX, ry: RY }, g);
+    const t = el('text', { class: 'nlabel', x, y: CASTLE_TERMINAL.has(s) ? y + 5 : y - 3 }, g);
+    t.textContent = s === 'Princess' ? 'Princess ♛' : s === 'Dead' ? 'Dead ✝' : s;
+    const v = el('text', { class: 'nval', x, y: y + 13 }, g);
+    nodes[s] = { g, v };
+  }
+  $('#c-graph').appendChild(svg);
+
+  /* ---- state & charts ---- */
+  $('#c-plot-state').innerHTML = CASTLE_NONTERMINAL.map(s => `<option>${s}</option>`).join('');
+  const vChart = makeChart('c-chart-v', 'line', [
+    lineDs('MC', '--c2'), lineDs('TD(0)', '--c1'), lineDs('true vπ', '--c4', { borderDash: [6, 4], borderWidth: 1.4 }),
+  ], baseOptions('Episode', 'V(s)'));
+  const rmsChart = makeChart('c-chart-rms', 'line', [lineDs('MC', '--c2'), lineDs('TD(0)', '--c1')], baseOptions('Episode', 'RMS error'));
+  rmsChart.options.scales.y.min = 0;
+
+  let pred, rng, truth, reachable, lecture = false, epCount = 0, current = null, lastEp = null, history = [], lastInfo = '';
+  const runner = makeRunner(running => { $('#c-run').textContent = running ? 'Pause' : 'Run'; });
+
+  function readConfig() {
+    const mcMode = $('#c-mcmode').value;
+    $('#c-mcalpha-wrap').style.display = mcMode === 'const' ? '' : 'none';
+    return {
+      pBridge: parseFloat($('input[name=c-policy]:checked').value), gamma: num('c-gamma'), alphaTD: num('c-alpha'),
+      mcMode, alphaMC: num('c-mcalpha'), v0: num('c-v0'), episodes: num('c-eps'), seed: Math.trunc(num('c-seed')) || 0,
+    };
+  }
+  let cfg;
+  const totalEpisodes = () => (lecture ? LECTURE_EPISODES.length : cfg.episodes);
+
+  function reset() {
+    runner.cancel();
+    cfg = readConfig();
+    pred = new CastlePredictor(cfg);
+    rng = streamRng(cfg.seed, 7);
+    truth = castleTrueValues(cfg.pBridge, cfg.gamma);
+    reachable = castleReachable(cfg.pBridge);
+    epCount = 0; current = null; lastEp = null; history = [];
+    lastInfo = lecture ? 'Lecture episodes loaded. Press <b>Step</b> to replay them one transition at a time.' : 'Press <b>Step</b> to sample an episode one transition at a time, or <b>Run</b>.';
+    vChart.options.scales.x.min = rmsChart.options.scales.x.min = 0;
+    vChart.options.scales.x.max = rmsChart.options.scales.x.max = totalEpisodes();
+    render(true);
+  }
+
+  function rms(V) {
+    let s = 0;
+    for (const st of reachable) s += (V[st] - truth[st]) ** 2;
+    return Math.sqrt(s / reachable.length);
+  }
+
+  // One environment transition: TD(0) update now; MC update at the end of the episode.
+  function stepTransition() {
+    if (!current) {
+      if (epCount >= totalEpisodes()) return false;
+      current = { ep: lecture ? LECTURE_EPISODES[epCount] : sampleCastleEpisode(rng, cfg.pBridge), pos: 0 };
+    }
+    const tr = current.ep[current.pos];
+    const td = pred.tdStep(tr);
+    current.pos++;
+    lastInfo = `<b>Episode ${epCount + 1}, t=${current.pos - 1}:</b> ${tr.s} —${tr.a}→ ${tr.s2}, R=${fmtSigned(tr.r, 0)}. ` +
+      `TD(0): δ = R + γV(${tr.s2}) − V(${tr.s}) = ${fmt(tr.r, 0)} + ${cfg.gamma}·${fmt(CastlePredictor.val(pred.Vtd, tr.s2))} − ${fmt(td.old)} = <b>${fmt(td.delta)}</b> → V(${tr.s}) = ${fmt(td.old)} + ${cfg.alphaTD}·${fmt(td.delta)} = <b>${fmt(td.next)}</b>`;
+    if (current.pos >= current.ep.length) {
+      const ups = pred.mcEpisode(current.ep);
+      lastInfo += `<br><b>Episode ${epCount + 1} terminated</b> in ${tr.s2}. First-visit MC returns: ` +
+        ups.map(u => `G(${u.s}) = ${fmt(u.G)} → V = ${fmt(u.next)}`).join(' · ');
+      epCount++;
+      history.push({ ep: current.ep, mc: { ...pred.Vmc }, td: { ...pred.Vtd }, rmsMC: rms(pred.Vmc), rmsTD: rms(pred.Vtd) });
+      lastEp = current; current = null;
+    }
+    return !!current || epCount < totalEpisodes();
+  }
+  function stepEpisode() {
+    if (!current && epCount >= totalEpisodes()) return false;
+    do { stepTransition(); } while (current);
+    return epCount < totalEpisodes();
+  }
+
+  function render(full) {
+    /* graph highlighting */
+    const show = current || lastEp;
+    const upto = show ? (current ? current.pos : show.ep.length) : 0;
+    Object.values(edges).forEach(e => { e.path.setAttribute('class', 'edge'); e.path.setAttribute('marker-end', 'url(#arr)'); e.label.setAttribute('class', 'elabel'); });
+    Object.entries(nodes).forEach(([s, n]) => n.g.classList.remove('visited', 'current'));
+    if (show) {
+      for (let i = 0; i < upto; i++) {
+        const tr = show.ep[i], e = edges[`${tr.s}>${tr.a}>${tr.s2}`];
+        const isLast = i === upto - 1;
+        e.path.setAttribute('class', 'edge ' + (isLast ? 'last' : 'taken'));
+        e.path.setAttribute('marker-end', isLast ? 'url(#arr-last)' : 'url(#arr-taken)');
+        e.label.setAttribute('class', 'elabel taken');
+        nodes[tr.s].g.classList.add('visited');
+      }
+      const cur = upto ? show.ep[upto - 1].s2 : 'Start';
+      nodes[cur].g.classList.add('current');
+    }
+    for (const s of CASTLE_NONTERMINAL) nodes[s].v.textContent = `MC ${fmt(pred.Vmc[s])} · TD ${fmt(pred.Vtd[s])}`;
+    nodes.Princess.v.textContent = ''; nodes.Dead.v.textContent = '';
+
+    /* trace */
+    const path = show ? ['Start', ...show.ep.slice(0, upto).map(t => t.s2)] : [];
+    $('#c-trace').innerHTML = (path.length ? `<div class="muted">Path: ${path.join(' → ')}</div>` : '') + `<div>${lastInfo}</div>`;
+
+    /* value table */
+    const updated = current ? current.ep[current.pos - 1].s : null;
+    let html = '<tr><th>State</th><th>true vπ</th><th>MC V</th><th>TD V</th><th>N (first visits)</th></tr>';
+    for (const s of CASTLE_NONTERMINAL) {
+      const reach = reachable.includes(s);
+      html += `<tr class="${s === updated ? 'hl' : ''}"><td>${s}${reach ? '' : ' <span class="muted small">(unreachable)</span>'}</td>
+        <td>${fmt(truth[s])}</td><td>${fmt(pred.Vmc[s])}</td><td>${fmt(pred.Vtd[s])}</td><td>${pred.N[s]}</td></tr>`;
+    }
+    const last = history[history.length - 1];
+    if (last) html += `<tr><td><i>RMS error</i></td><td></td><td>${fmt(last.rmsMC, 3)}</td><td>${fmt(last.rmsTD, 3)}</td><td></td></tr>`;
+    $('#c-table').innerHTML = html;
+
+    /* lecture sanity check */
+    let check = '';
+    if (lecture && epCount === 4 && cfg.gamma === 1 && cfg.alphaTD === 0.2 && cfg.v0 === 0 && cfg.mcMode === 'avg') {
+      const exp = { mc: { Start: -1.5, Castle: 2.33, Dragon: 3.33 }, td: { Start: -1.77, Castle: -0.25, Dragon: 1.68 } };
+      const ok = ['Start', 'Castle', 'Dragon'].every(s => Math.abs(pred.Vmc[s] - exp.mc[s]) < 0.006 && Math.abs(pred.Vtd[s] - exp.td[s]) < 0.006);
+      check = ok ? '<span class="ok">✓ Matches the lecture slides</span> (MC: −1.5 / 2.33 / 3.33, TD: −1.77 / −0.25 / 1.68)' : '<span class="notok">✗ Does not match lecture values</span>';
+    } else if (lecture) check = 'Lecture mode: replaying the 4 fixed episodes (policy setting only affects true vπ).';
+    $('#c-check').innerHTML = check;
+    $('#c-status').textContent = `Episode ${epCount} / ${totalEpisodes()}${current ? ` (in progress, t=${current.pos})` : ''} · ${lecture ? 'lecture episodes' : 'sampled episodes'}`;
+
+    /* charts */
+    const ps = $('#c-plot-state').value;
+    $('#c-plot-name').textContent = ps;
+    const xs0 = [{ x: 0, y: cfg.v0 }];
+    vChart.data.datasets[0].data = xs0.concat(history.map((h, i) => ({ x: i + 1, y: h.mc[ps] })));
+    vChart.data.datasets[1].data = xs0.concat(history.map((h, i) => ({ x: i + 1, y: h.td[ps] })));
+    vChart.data.datasets[2].data = [{ x: 0, y: truth[ps] }, { x: totalEpisodes(), y: truth[ps] }];
+    vChart.data.datasets[2].label = `true vπ(${ps}) = ${fmt(truth[ps])}`;
+    vChart.update('none');
+    rmsChart.data.datasets[0].data = history.map((h, i) => ({ x: i + 1, y: h.rmsMC }));
+    rmsChart.data.datasets[1].data = history.map((h, i) => ({ x: i + 1, y: h.rmsTD }));
+    rmsChart.update('none');
+
+    /* episode log (last 200) */
+    const abbrev = { Start: 'S', Castle: 'C', Dragon: 'Dr', Forest: 'F', Attacked: 'A', CastleBack: 'CB', SecretDoor: 'SD', Princess: 'P♛', Dead: '✝' };
+    const from = Math.max(0, history.length - 200);
+    let log = '<table class="data"><tr><th>#</th><th>Trajectory</th><th>G₀</th>' + CASTLE_NONTERMINAL.map(s => `<th>${s}</th>`).join('') + '</tr>';
+    for (let i = from; i < history.length; i++) {
+      const h = history[i];
+      let g = 0; for (let t = h.ep.length - 1; t >= 0; t--) g = h.ep[t].r + cfg.gamma * g;
+      log += `<tr><td>${i + 1}</td><td>${['Start', ...h.ep.map(t => t.s2)].map(s => abbrev[s]).join('→')}</td><td>${fmt(g, 1)}</td>` +
+        CASTLE_NONTERMINAL.map(s => `<td>${fmt(h.mc[s])} / ${fmt(h.td[s])}</td>`).join('') + '</tr>';
+    }
+    log += '</table>';
+    const box = $('#c-log');
+    box.innerHTML = history.length ? log : '<div class="muted small" style="padding:8px">No finished episodes yet.</div>';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function run() {
+    if (runner.running) { runner.cancel(); return; }
+    if (!current && epCount >= totalEpisodes()) reset();
+    runner.start(stepEpisode, render);
+  }
+  $('#c-run').addEventListener('click', run);
+  $('#c-step').addEventListener('click', () => { runner.cancel(); stepTransition(); render(); });
+  $('#c-stepep').addEventListener('click', () => { runner.cancel(); stepEpisode(); render(); });
+  $('#c-reset').addEventListener('click', reset);
+  $('#c-plot-state').addEventListener('change', () => render());
+  $('#c-lecture').addEventListener('click', () => {
+    lecture = true;
+    setVal('c-gamma', 1); setVal('c-alpha', 0.2); setVal('c-v0', 0); $('#c-mcmode').value = 'avg';
+    reset();
+  });
+  $('#c-sample').addEventListener('click', () => { lecture = false; reset(); run(); });
+  wireAuto(panel, 'c-auto', () => { reset(); run(); });
+
+  reset(); run();
+  return {};
+})();
+
+/* ===================================================================== */
+/* TAB 3 — CLIFF WALKING UI                                              */
+/* ===================================================================== */
+var cliffUI = null;
+cliffUI = (() => {
+  const panel = $('#tab-cliff .card');
+  $$('input[type=range]', panel).forEach(syncOutput);
+  const CELL = 40, svgNS = 'http://www.w3.org/2000/svg';
+
+  const chart = makeChart('g-chart', 'line', [lineDs('SARSA', '--c1'), lineDs('Q-learning', '--c2')], baseOptions('Episode', 'Sum of rewards during episode'));
+
+  let exp, cfg, watch = null;
+  const runner = makeRunner(running => { $('#g-run').textContent = running ? 'Pause' : 'Run'; });
+
+  function readConfig() {
+    return { eps: num('g-eps'), decay: $('#g-decay').checked, alpha: num('g-alpha'), gamma: num('g-gamma'),
+      episodes: num('g-episodes'), runs: num('g-runs'), seed: Math.trunc(num('g-seed')) || 0 };
+  }
+  function reset() {
+    runner.cancel(); stopWatch();
+    cfg = readConfig();
+    exp = new CliffExperiment(cfg);
+    chart.options.scales.x.min = 1; chart.options.scales.x.max = cfg.episodes;
+    render();
+  }
+
+  function renderChart() {
+    const w = num('g-smooth'), clip = $('#g-clip').checked;
+    exp.agents.forEach((ag, i) => {
+      const sm = movingAverage(ag.returns, exp.ep, w);
+      chart.data.datasets[i].data = sm.map((y, j) => ({ x: j + 1, y }));
+    });
+    chart.options.scales.y.min = clip ? -100 : undefined;
+    chart.options.scales.y.max = clip ? 0 : undefined;
+    chart.update('none');
+    $('#g-chart-sub').textContent = `(average of ${cfg.runs} run${cfg.runs > 1 ? 's' : ''}, moving average over ${w} episode${w > 1 ? 's' : ''})`;
+  }
+
+  function gridSVG(Q, colorVar, dot) {
+    const lo = css('--heat-lo'), hi = css('--heat-hi'), showQ = $('#g-showq').checked;
+    let vmin = Infinity, vmax = -Infinity;
+    for (let s = 0; s < 48; s++) if (!isCliff(s) && s !== CLIFF_GOAL) { const m = maxQ(Q, s); vmin = Math.min(vmin, m); vmax = Math.max(vmax, m); }
+    const parts = [`<svg class="grid" viewBox="0 0 ${CLIFF_COLS * CELL} ${CLIFF_ROWS * CELL}" xmlns="${svgNS}">`];
+    for (let s = 0; s < 48; s++) {
+      const r = Math.floor(s / CLIFF_COLS), c = s % CLIFF_COLS, x = c * CELL, y = r * CELL;
+      if (isCliff(s)) { parts.push(`<rect class="cell cliff" x="${x}" y="${y}" width="${CELL}" height="${CELL}"/>`); continue; }
+      const m = maxQ(Q, s), t = vmax > vmin ? (m - vmin) / (vmax - vmin) : 0.5;
+      parts.push(`<rect class="cell" x="${x}" y="${y}" width="${CELL}" height="${CELL}" style="fill:${s === CLIFF_GOAL ? css('--panel-2') : mixHex(lo, hi, t)}"><title>max Q = ${m.toFixed(2)}</title></rect>`);
+      if (s === CLIFF_GOAL) { parts.push(`<text class="lbl" x="${x + CELL / 2}" y="${y + CELL / 2}">G</text>`); continue; }
+      const q = Q.subarray(s * 4, s * 4 + 4);
+      const untouched = q[0] === q[1] && q[1] === q[2] && q[2] === q[3];
+      let a = 0; for (let b = 1; b < 4; b++) if (q[b] > q[a]) a = b;
+      const glyph = untouched ? '·' : CLIFF_ARROWS[a];
+      parts.push(`<text class="arrow" x="${x + CELL / 2}" y="${y + CELL / 2 - (showQ ? 4 : 0)}">${glyph}</text>`);
+      if (showQ) parts.push(`<text class="qv" x="${x + CELL / 2}" y="${y + CELL - 3}">${m.toFixed(1)}</text>`);
+      if (s === CLIFF_START) parts.push(`<text class="lbl" x="${x + 9}" y="${y + 10}" style="font-size:11px">S</text>`);
+    }
+    parts.push(`<text class="cliff-lbl" x="${6 * CELL}" y="${3.5 * CELL}">THE CLIFF</text>`);
+    // greedy path
+    const gp = cliffGreedyPath(Q);
+    const pts = gp.path.map(s => `${(s % CLIFF_COLS + 0.5) * CELL},${(Math.floor(s / CLIFF_COLS) + 0.5) * CELL}`).join(' ');
+    parts.push(`<polyline class="path" points="${pts}" style="stroke:${css(colorVar)}"/>`);
+    if (dot != null) {
+      parts.push(`<circle class="dot" cx="${(dot % CLIFF_COLS + 0.5) * CELL}" cy="${(Math.floor(dot / CLIFF_COLS) + 0.5) * CELL}" r="11" style="fill:${css(colorVar)}"/>`);
+    }
+    parts.push('</svg>');
+    return { svg: parts.join(''), gp };
+  }
+
+  function renderGrids() {
+    if (!exp) return;
+    const ids = [['#g-grid-sarsa', '#g-info-sarsa', '--c1'], ['#g-grid-q', '#g-info-q', '--c2']];
+    exp.agents.forEach((ag, i) => {
+      const w = watch && watch.agents[i];
+      const { svg, gp } = gridSVG(ag.Qs[0], ids[i][2], w ? w.pos : null);
+      $(ids[i][0]).innerHTML = svg;
+      const n = Math.min(exp.ep, 50);
+      let avg = 0; for (let j = exp.ep - n; j < exp.ep; j++) avg += ag.returns[j];
+      const pathTxt = gp.outcome === 'goal' ? `greedy path: ${gp.path.length - 1} steps to G` + (gp.path.some(s => Math.floor(s / CLIFF_COLS) === 2 && s % CLIFF_COLS >= 1 && s % CLIFF_COLS <= 10) && gp.path.length - 1 === 13 ? ' (cliff edge)' : '')
+        : gp.outcome === 'cliff' ? 'greedy path: falls off the cliff' : 'greedy path: does not reach G yet';
+      $(ids[i][1]).innerHTML = w
+        ? `<b>Watching</b> (ε=${w.eps.toFixed(2)}): step ${w.t}, return ${fmt(w.ret, 0)}${w.done ? ' — reached G' : ''}${w.falls ? `, fell ${w.falls}×` : ''}`
+        : `${exp.ep ? `avg return, last ${n} episodes: <b>${fmt(avg / n, 1)}</b> · ` : ''}${pathTxt}`;
+    });
+  }
+
+  function render() {
+    renderChart();
+    renderGrids();
+    $('#g-status').textContent = `Episode ${exp.ep} / ${cfg.episodes} · ${cfg.runs} run${cfg.runs > 1 ? 's' : ''} · current ε = ${exp.epsAt(Math.min(exp.ep, cfg.episodes - 1)).toFixed(3)}`;
+  }
+
+  function run() {
+    if (runner.running) { runner.cancel(); return; }
+    stopWatch();
+    if (exp.done) reset();
+    runner.start(() => exp.step(), render);
+  }
+
+  /* ---- Watch: animate one ε-greedy episode per agent (run #1, no learning) ---- */
+  let watchCount = 0;
+  function stopWatch() { if (watch) { clearInterval(watch.timer); watch = null; $('#g-watch').textContent = 'Watch'; } }
+  function startWatch() {
+    if (watch) { stopWatch(); renderGrids(); return; }
+    runner.cancel();
+    const eps = exp.epsAt(Math.min(exp.ep, cfg.episodes - 1));
+    const rngW = streamRng(cfg.seed, 99, watchCount++);
+    watch = { agents: exp.agents.map(() => ({ pos: CLIFF_START, t: 0, ret: 0, done: false, falls: 0, eps })) };
+    $('#g-watch').textContent = 'Stop';
+    const MAX = 300;
+    watch.timer = setInterval(() => {
+      let alive = false;
+      exp.agents.forEach((ag, i) => {
+        const w = watch.agents[i];
+        if (w.done || w.t >= MAX) return;
+        if (w.pendingStart) { w.pos = CLIFF_START; w.pendingStart = false; alive = true; return; }
+        const a = epsGreedy(ag.Qs[0], w.pos, eps, rngW);
+        const res = cliffStep(w.pos, a);
+        w.t++; w.ret += res.r;
+        if (res.fell !== undefined) { w.pos = res.fell; w.pendingStart = true; w.falls++; }   // show the fall, then reset
+        else w.pos = res.s2;
+        w.done = res.done;
+        alive = true;
+      });
+      renderGrids();
+      if (!alive) { clearInterval(watch.timer); watch = null; $('#g-watch').textContent = 'Watch'; }   // final info stays on screen
+    }, 90);
+  }
+
+  $('#g-run').addEventListener('click', run);
+  $('#g-step').addEventListener('click', () => { runner.cancel(); stopWatch(); exp.step(); render(); });
+  $('#g-reset').addEventListener('click', reset);
+  $('#g-watch').addEventListener('click', startWatch);
+  // display-only controls: no need to retrain
+  $('#g-smooth').addEventListener('input', e => { e.stopPropagation(); syncOutput(e.target); renderChart(); });
+  $('#g-clip').addEventListener('change', e => { e.stopPropagation(); renderChart(); });
+  $('#g-showq').addEventListener('change', e => { e.stopPropagation(); renderGrids(); });
+  $('#g-smooth').addEventListener('change', e => e.stopPropagation());
+  $('#g-clip').addEventListener('input', e => e.stopPropagation());
+  $('#g-showq').addEventListener('input', e => e.stopPropagation());
+  wireAuto(panel, 'g-auto', () => { reset(); run(); });
+
+  reset(); run();
+  return { renderGrids };
+})();
+
+/* restore last tab */
+try { const t = localStorage.getItem('rl-tab'); if (t) { const b = $(`nav.tabs button[data-tab="${t}"]`); if (b) b.click(); } } catch (e) {}
+
+/* Kick off the bandit with the Fig. 2.2 defaults. */
+banditUI.autoRun();
+</script>
+</body>
+</html>
