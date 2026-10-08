@@ -19,7 +19,7 @@ Open `index.html` in a browser. Nothing needs to be installed.
 ## Publish on GitHub Pages
 
 *Settings → Pages → Build and deployment → Source: "Deploy from a branch"*, then select the branch (e.g. `main`)
-and folder `/ (root)`. The site appears at `https://<user>.github.io/reinforcement-learning-demo/`.
+and folder `/ (root)`. The site appears at `https://jakobfender.github.io/reinforcement-learning-demo/`.
 
 ## Tests
 
